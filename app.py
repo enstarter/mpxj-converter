@@ -1,24 +1,19 @@
 """
 MPXJ File Converter - Web App
+Uses org.mpxj.* package (correct for mpxj >= 13.x)
 """
-import os, tempfile, traceback, subprocess
+import os, tempfile, traceback, glob, jpype
 
-# Locate Java and tell JPype where to find it
-def _setup_java():
-    java_home = os.environ.get("JAVA_HOME", "")
-    if not java_home:
-        try:
-            out = subprocess.check_output(["java", "-XshowSettings:property", "-version"],
-                                          stderr=subprocess.STDOUT).decode()
-            for line in out.splitlines():
-                if "java.home" in line:
-                    java_home = line.split("=")[-1].strip()
-                    os.environ["JAVA_HOME"] = java_home
-                    break
-        except Exception:
-            pass
+# Boot JVM once at startup with all mpxj jars on the classpath
+def _start_jvm():
+    if jpype.isJVMStarted():
+        return
+    import mpxj as _mpxj
+    for jar in glob.glob(os.path.join(_mpxj.mpxj_dir, '*.jar')):
+        jpype.addClassPath(jar)
+    jpype.startJVM(convertStrings=True)
 
-_setup_java()
+_start_jvm()
 
 from flask import Flask, request, send_file, jsonify, render_template
 
@@ -34,26 +29,31 @@ OUTPUT_FORMATS = {
     "planner": ("Planner",          ".xml"),
 }
 
-def convert_file(input_path, output_path, fmt_id):
-    from mpxj import UniversalProjectReader
-    from mpxj import (
-        MSPDIWriter, MPXWriter,
-        PrimaveraXERFileWriter, PrimaveraPMFileWriter,
-        SDEFWriter, PlannerWriter,
-    )
-    writers = {
-        "mspdi":   MSPDIWriter,
-        "mpx":     MPXWriter,
-        "xer":     PrimaveraXERFileWriter,
-        "pmxml":   PrimaveraPMFileWriter,
-        "sdef":    SDEFWriter,
-        "planner": PlannerWriter,
+# Lazy-load Java classes after JVM is running
+def _get_classes():
+    JClass = jpype.JClass
+    return {
+        "reader": JClass('org.mpxj.reader.UniversalProjectReader'),
+        "mspdi":   JClass('org.mpxj.mspdi.MSPDIWriter'),
+        "mpx":     JClass('org.mpxj.mpx.MPXWriter'),
+        "xer":     JClass('org.mpxj.primavera.PrimaveraXERFileWriter'),
+        "pmxml":   JClass('org.mpxj.primavera.PrimaveraPMFileWriter'),
+        "sdef":    JClass('org.mpxj.sdef.SDEFWriter'),
+        "planner": JClass('org.mpxj.planner.PlannerWriter'),
     }
-    cls = writers.get(fmt_id)
-    if cls is None:
-        raise ValueError(f"Unknown output format: {fmt_id}")
-    project = UniversalProjectReader().read(input_path)
-    cls().write(project, output_path)
+
+_classes = None
+
+def get_classes():
+    global _classes
+    if _classes is None:
+        _classes = _get_classes()
+    return _classes
+
+def convert_file(input_path, output_path, fmt_id):
+    classes = get_classes()
+    project = classes["reader"]().read(input_path)
+    classes[fmt_id]().write(project, output_path)
 
 @app.route("/")
 def index():
@@ -85,12 +85,7 @@ def convert():
 
 @app.route("/health")
 def health():
-    try:
-        import jpype
-        jvm_ok = jpype.isJVMStarted()
-    except Exception as e:
-        jvm_ok = str(e)
-    return jsonify({"status": "ok", "jvm": jvm_ok, "java_home": os.environ.get("JAVA_HOME", "not set")})
+    return jsonify({"status": "ok", "jvm": jpype.isJVMStarted()})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
