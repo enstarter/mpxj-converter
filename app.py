@@ -10,28 +10,37 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
 
 OUTPUT_FORMATS = {
-    "mspdi":   ("MS Project XML",         ".xml"),
-    "mpx":     ("MPX",                    ".mpx"),
-    "xer":     ("Primavera XER",          ".xer"),
-    "pmxml":   ("Primavera P6 XML",       ".xml"),
-    "sdef":    ("SDEF",                   ".sdef"),
-    "planner": ("Planner",                ".xml"),
+    "mspdi":   ("MS Project XML",    ".xml"),
+    "mpx":     ("MPX",               ".mpx"),
+    "xer":     ("Primavera XER",     ".xer"),
+    "pmxml":   ("Primavera P6 XML",  ".xml"),
+    "sdef":    ("SDEF",              ".sdef"),
+    "planner": ("Planner",           ".xml"),
 }
 
-def get_writer(fmt_id):
-    import mpxj
+def convert_file(input_path, output_path, fmt_id):
+    from mpxj import UniversalProjectReader
+    from mpxj import (
+        MSPDIWriter,
+        MPXWriter,
+        PrimaveraXERFileWriter,
+        PrimaveraPMFileWriter,
+        SDEFWriter,
+        PlannerWriter,
+    )
     writers = {
-        "mspdi":   mpxj.MSPDIWriter,
-        "mpx":     mpxj.MPXWriter,
-        "xer":     mpxj.PrimaveraXERFileWriter,
-        "pmxml":   mpxj.PrimaveraPMFileWriter,
-        "sdef":    mpxj.SDEFWriter,
-        "planner": mpxj.PlannerWriter,
+        "mspdi":   MSPDIWriter,
+        "mpx":     MPXWriter,
+        "xer":     PrimaveraXERFileWriter,
+        "pmxml":   PrimaveraPMFileWriter,
+        "sdef":    SDEFWriter,
+        "planner": PlannerWriter,
     }
     cls = writers.get(fmt_id)
     if cls is None:
         raise ValueError(f"Unknown output format: {fmt_id}")
-    return cls()
+    project = UniversalProjectReader().read(input_path)
+    cls().write(project, output_path)
 
 @app.route("/")
 def index():
@@ -41,41 +50,25 @@ def index():
 def convert():
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
-
     fmt_id = request.form.get("format", "mspdi")
     if fmt_id not in OUTPUT_FORMATS:
         return jsonify({"error": f"Unsupported format: {fmt_id}"}), 400
-
     uploaded = request.files["file"]
-    _, (_, ext) = fmt_id, OUTPUT_FORMATS[fmt_id]
     ext = OUTPUT_FORMATS[fmt_id][1]
-
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded.filename)[1]) as tmp_in:
         uploaded.save(tmp_in.name)
         input_path = tmp_in.name
-
     output_path = input_path + "_out" + ext
-
     try:
-        from mpxj.reader import UniversalProjectReader
-        project = UniversalProjectReader().read(input_path)
-        writer = get_writer(fmt_id)
-        writer.write(project, output_path)
-
+        convert_file(input_path, output_path, fmt_id)
         out_filename = os.path.splitext(uploaded.filename)[0] + ext
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=out_filename,
-            mimetype="application/octet-stream"
-        )
+        return send_file(output_path, as_attachment=True, download_name=out_filename, mimetype="application/octet-stream")
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     finally:
         if os.path.exists(input_path):
             os.remove(input_path)
-        # cleanup output after send (best effort)
 
 @app.route("/health")
 def health():
