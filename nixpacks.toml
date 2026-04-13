@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["jdk17", "python311"]
+nixPkgs = ["jdk17", "python311", "gcc", "zlib"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]

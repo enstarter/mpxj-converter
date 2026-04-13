@@ -1,32 +1,45 @@
 """
 MPXJ File Converter - Web App
-Deployable to Railway.app with zero configuration.
 """
+import os, tempfile, traceback, subprocess
+
+# Locate Java and tell JPype where to find it
+def _setup_java():
+    java_home = os.environ.get("JAVA_HOME", "")
+    if not java_home:
+        try:
+            out = subprocess.check_output(["java", "-XshowSettings:property", "-version"],
+                                          stderr=subprocess.STDOUT).decode()
+            for line in out.splitlines():
+                if "java.home" in line:
+                    java_home = line.split("=")[-1].strip()
+                    os.environ["JAVA_HOME"] = java_home
+                    break
+        except Exception:
+            pass
+
+_setup_java()
 
 from flask import Flask, request, send_file, jsonify, render_template
-import tempfile, os, traceback
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
 OUTPUT_FORMATS = {
-    "mspdi":   ("MS Project XML",    ".xml"),
-    "mpx":     ("MPX",               ".mpx"),
-    "xer":     ("Primavera XER",     ".xer"),
-    "pmxml":   ("Primavera P6 XML",  ".xml"),
-    "sdef":    ("SDEF",              ".sdef"),
-    "planner": ("Planner",           ".xml"),
+    "mspdi":   ("MS Project XML",   ".xml"),
+    "mpx":     ("MPX",              ".mpx"),
+    "xer":     ("Primavera XER",    ".xer"),
+    "pmxml":   ("Primavera P6 XML", ".xml"),
+    "sdef":    ("SDEF",             ".sdef"),
+    "planner": ("Planner",          ".xml"),
 }
 
 def convert_file(input_path, output_path, fmt_id):
     from mpxj import UniversalProjectReader
     from mpxj import (
-        MSPDIWriter,
-        MPXWriter,
-        PrimaveraXERFileWriter,
-        PrimaveraPMFileWriter,
-        SDEFWriter,
-        PlannerWriter,
+        MSPDIWriter, MPXWriter,
+        PrimaveraXERFileWriter, PrimaveraPMFileWriter,
+        SDEFWriter, PlannerWriter,
     )
     writers = {
         "mspdi":   MSPDIWriter,
@@ -72,7 +85,12 @@ def convert():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    try:
+        import jpype
+        jvm_ok = jpype.isJVMStarted()
+    except Exception as e:
+        jvm_ok = str(e)
+    return jsonify({"status": "ok", "jvm": jvm_ok, "java_home": os.environ.get("JAVA_HOME", "not set")})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
