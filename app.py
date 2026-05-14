@@ -4,7 +4,6 @@ Uses org.mpxj.* package (correct for mpxj >= 13.x)
 """
 import os, tempfile, traceback, glob, jpype
 
-# Boot JVM once at startup with all mpxj jars on the classpath
 def _start_jvm():
     if jpype.isJVMStarted():
         return
@@ -29,25 +28,21 @@ OUTPUT_FORMATS = {
     "planner": ("Planner",          ".xml"),
 }
 
-# Lazy-load Java classes after JVM is running
-def _get_classes():
-    JClass = jpype.JClass
-    return {
-        "reader": JClass('org.mpxj.reader.UniversalProjectReader'),
-        "mspdi":   JClass('org.mpxj.mspdi.MSPDIWriter'),
-        "mpx":     JClass('org.mpxj.mpx.MPXWriter'),
-        "xer":     JClass('org.mpxj.primavera.PrimaveraXERFileWriter'),
-        "pmxml":   JClass('org.mpxj.primavera.PrimaveraPMFileWriter'),
-        "sdef":    JClass('org.mpxj.sdef.SDEFWriter'),
-        "planner": JClass('org.mpxj.planner.PlannerWriter'),
-    }
-
 _classes = None
 
 def get_classes():
     global _classes
     if _classes is None:
-        _classes = _get_classes()
+        JClass = jpype.JClass
+        _classes = {
+            "reader":  JClass('org.mpxj.reader.UniversalProjectReader'),
+            "mspdi":   JClass('org.mpxj.mspdi.MSPDIWriter'),
+            "mpx":     JClass('org.mpxj.mpx.MPXWriter'),
+            "xer":     JClass('org.mpxj.primavera.PrimaveraXERFileWriter'),
+            "pmxml":   JClass('org.mpxj.primavera.PrimaveraPMFileWriter'),
+            "sdef":    JClass('org.mpxj.sdef.SDEFWriter'),
+            "planner": JClass('org.mpxj.planner.PlannerWriter'),
+        }
     return _classes
 
 def convert_file(input_path, output_path, fmt_id):
