@@ -1,9 +1,19 @@
 """
 MPXJ File Converter - Web App
-Uses org.mpxj.* package (correct for mpxj >= 13.x)
+Saves original uploads to Cloudinary.
 """
 import os, tempfile, traceback, glob, jpype
+import cloudinary
+import cloudinary.uploader
 
+# Configure Cloudinary
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+)
+
+# Boot JVM once at startup
 def _start_jvm():
     if jpype.isJVMStarted():
         return
@@ -45,6 +55,23 @@ def get_classes():
         }
     return _classes
 
+def save_to_cloudinary(file_path, original_filename):
+    """Upload original file to Cloudinary for archiving."""
+    try:
+        public_id = f"mpxj-uploads/{os.path.splitext(original_filename)[0]}"
+        cloudinary.uploader.upload(
+            file_path,
+            public_id=public_id,
+            resource_type="raw",  # non-image file
+            use_filename=True,
+            unique_filename=True,
+            overwrite=False,
+        )
+        print(f"Saved to Cloudinary: {public_id}")
+    except Exception as e:
+        # Don't fail the conversion if Cloudinary upload fails
+        print(f"Cloudinary upload failed (non-fatal): {e}")
+
 def convert_file(input_path, output_path, fmt_id):
     classes = get_classes()
     project = classes["reader"]().read(input_path)
@@ -61,14 +88,23 @@ def convert():
     fmt_id = request.form.get("format", "mspdi")
     if fmt_id not in OUTPUT_FORMATS:
         return jsonify({"error": f"Unsupported format: {fmt_id}"}), 400
+
     uploaded = request.files["file"]
     ext = OUTPUT_FORMATS[fmt_id][1]
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded.filename)[1]) as tmp_in:
         uploaded.save(tmp_in.name)
         input_path = tmp_in.name
+
     output_path = input_path + "_out" + ext
+
     try:
+        # Save original to Cloudinary before converting
+        save_to_cloudinary(input_path, uploaded.filename)
+
+        # Convert
         convert_file(input_path, output_path, fmt_id)
+
         out_filename = os.path.splitext(uploaded.filename)[0] + ext
         return send_file(output_path, as_attachment=True, download_name=out_filename, mimetype="application/octet-stream")
     except Exception as e:
