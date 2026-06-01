@@ -2,3 +2,4 @@ flask==3.0.3
 mpxj==16.1.0
 JPype1==1.5.0
 gunicorn==22.0.0
+cloudinary==1.40.0
