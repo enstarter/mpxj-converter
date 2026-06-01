@@ -63,7 +63,8 @@ def save_to_cloudinary(file_path, original_filename):
 
 @app.route("/")
 def index():
-    return render_template("index.html", formats=OUTPUT_FORMATS)
+    fmt_json = {k: {"name": v[0], "ext": v[1]} for k, v in OUTPUT_FORMATS.items()}
+    return render_template("index.html", formats=fmt_json)
 
 @app.route("/convert", methods=["POST"])
 def convert():

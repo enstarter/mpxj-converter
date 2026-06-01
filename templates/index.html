@@ -100,7 +100,7 @@
 </main>
 <footer>Built with <a href="https://www.mpxj.org/" target="_blank">MPXJ</a> — the open source project file library.</footer>
 <script>
-const formats={{% for id,(name,ext) in formats.items() %}"{{id}}":{name:"{{name}}",ext:"{{ext}}"},{% endfor %}};
+const formats={{ formats | tojson }};
 let selectedFile=null,selectedFmt=null;
 const grid=document.getElementById('fmtGrid');
 Object.entries(formats).forEach(([id,f])=>{
